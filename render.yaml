@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: ai-wedding-planner-api
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run prisma:generate && npm run build
+    startCommand: npx prisma migrate deploy && npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OSM_USER_AGENT
+        sync: false
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: LLM_MODEL
+        value: gemini-2.5-flash-lite
