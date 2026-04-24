@@ -8,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id                 String              @id @default(cuid())
+  id                 Int                 @id @default(autoincrement())
   email              String              @unique
   firstName          String
   lastName           String?
@@ -19,8 +19,8 @@ model User {
 }
 
 model CoupleProfile {
-  id                String   @id @default(cuid())
-  userId            String   @unique
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique
   partnerName       String
   homeCity          String
   preferredBudget   String?
@@ -31,20 +31,16 @@ model CoupleProfile {
 }
 
 model VibeOption {
-  id          String   @id @default(cuid())
-  key         String   @unique
-  name        String
-  description String
-  tags        Json
-  placeHints  Json
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model KnowledgeDocument {
-  id          String           @id @default(cuid())
-  userId      String
+  id           Int              @id @default(autoincrement())
+  userId       Int
   kind        KnowledgeKind
   referenceKey String?         @unique
   title       String
@@ -59,8 +55,8 @@ model KnowledgeDocument {
 }
 
 model KnowledgeChunk {
-  id         String            @id @default(cuid())
-  documentId String
+  id         Int               @id @default(autoincrement())
+  documentId Int
   chunkIndex Int
   content    String
   keywords   Json

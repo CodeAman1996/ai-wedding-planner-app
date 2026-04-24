@@ -8,19 +8,11 @@ async function main() {
     await prisma.vibeOption.upsert({
       where: { key: vibe.key },
       update: {
-        name: vibe.name,
-        description: vibe.description,
-        tags: vibe.tags,
-        placeHints: vibe.placeHints,
-        isActive: true
+        name: vibe.name
       },
       create: {
         key: vibe.key,
-        name: vibe.name,
-        description: vibe.description,
-        tags: vibe.tags,
-        placeHints: vibe.placeHints,
-        isActive: true
+        name: vibe.name
       }
     });
   }

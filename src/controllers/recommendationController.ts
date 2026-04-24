@@ -1,11 +1,12 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { RecommendationService } from "../services/recommendationService.js";
+import { sendSuccess } from "../utils/apiResponse.js";
 
 const recommendationService = new RecommendationService();
 
 const recommendationSchema = z.object({
-  userId: z.string().min(1),
+  userId: z.coerce.number().int().positive(),
   city: z.string().min(1),
   selectedVibes: z.array(z.string().min(1)).min(1),
   freeText: z.string().optional(),
@@ -15,5 +16,9 @@ const recommendationSchema = z.object({
 export async function generateLocationRecommendations(request: Request, response: Response) {
   const payload = recommendationSchema.parse(request.body);
   const result = await recommendationService.generate(payload);
-  return response.status(201).json(result);
+  return sendSuccess(response, {
+    statusCode: 201,
+    message: "Location recommendations generated successfully",
+    data: result
+  });
 }

@@ -52,8 +52,8 @@ This project uses a simple RAG-style memory system without a vector database.
 Main models:
 
 - `User`
-- `CoupleProfile`
-- `VibeOption`
+- `CoupleProfile` with `partnerName`, `homeCity`, `preferredBudget`, and `preferredRadiusKm`
+- `VibeOption` with only `key` and `name`
 - `KnowledgeDocument`
 - `KnowledgeChunk`
 
@@ -70,6 +70,7 @@ This gives you memory and reuse of prior context without introducing embeddings 
 ## API endpoints
 
 - `GET /health`
+- `GET /api/v1/security/csrf-token`
 - `GET /api/v1/vibes`
 - `POST /api/v1/vibes/seed`
 - `POST /api/v1/users/onboard`
@@ -88,15 +89,22 @@ PORT=4000
 
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/ai_wedding_planner?schema=public
 REDIS_URL=redis://localhost:6379
+ENABLE_REDIS=false
+ENABLE_CSRF=true
 
 GEMINI_API_KEY=your_gemini_api_key
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 LLM_PROVIDER=gemini
 LLM_MODEL=gemini-2.5-flash-lite
 
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173
+CORS_ALLOW_CREDENTIALS=true
+
 NOMINATIM_BASE_URL=https://nominatim.openstreetmap.org
 OVERPASS_API_URL=https://overpass-api.de/api/interpreter
 OSM_USER_AGENT=ai-wedding-planner/0.1 (contact: your-email@example.com)
+CSRF_COOKIE_NAME=csrf_secret
+CSRF_HEADER_NAME=x-csrf-token
 
 CACHE_TTL_SECONDS=3600
 BASE_SEARCH_RADIUS_KM=25
@@ -142,18 +150,41 @@ docker rm -f ai-wedding-redis
 
 If Redis is not available, the app still works in development because it falls back to in-memory caching.
 
-Redis is disabled by default right now through:
-
-```env
-ENABLE_REDIS=false
-```
-
-When you want to enable it later, set:
+Redis is enabled when:
 
 ```env
 ENABLE_REDIS=true
 REDIS_URL=redis://localhost:6379
 ```
+
+## How Redis works in this project
+
+Redis is not your main database here. PostgreSQL is still the source of truth.
+
+Redis is used only as a fast cache layer.
+
+Current role of Redis:
+
+- when the app searches places for a city and vibe combination, it first checks Redis
+- if the same search was already done recently, the app returns cached place results instead of calling Overpass again
+- if nothing is cached, the app fetches live place data, returns it, and stores it in Redis for the next request
+
+Why this helps:
+
+- faster repeated responses
+- fewer external API calls
+- less stress on public Nominatim and Overpass endpoints
+- cheaper and more scalable behavior later in production
+
+Simple example:
+
+1. user asks for peaceful green places in Jaipur
+2. AI converts that into place search terms like `botanical garden` and `forest park`
+3. app checks Redis for cached results like `places:Jaipur:botanical garden`
+4. if cache exists, it uses that immediately
+5. if cache does not exist, it calls Overpass, gets fresh places, and stores them in Redis
+
+So Redis is basically short-term memory for repeated searches, while PostgreSQL is long-term memory for users and planning knowledge.
 
 ## Install and run
 
@@ -172,6 +203,65 @@ If you make a schema change and want a named migration:
 
 ```powershell
 npm run prisma:migrate -- --name your_migration_name
+```
+
+## API response format
+
+Every API now returns a consistent response envelope:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Request completed successfully",
+  "data": {}
+}
+```
+
+Validation and server errors also include `success: false` and `statusCode`.
+
+## CORS and CSRF
+
+This project now has explicit CORS config and CSRF protection.
+
+CORS:
+
+- allowed origins come from `CORS_ALLOWED_ORIGINS`
+- credential support comes from `CORS_ALLOW_CREDENTIALS`
+
+CSRF:
+
+- controlled by `ENABLE_CSRF`
+- token endpoint: `GET /api/v1/security/csrf-token`
+- send the token back in the `x-csrf-token` header for `POST`, `PUT`, `PATCH`, and `DELETE`
+
+### Terminal flow for CSRF-protected POST APIs
+
+Fetch a CSRF token first and keep the cookie session:
+
+```powershell
+$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$csrfResponse = Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/v1/security/csrf-token" -WebSession $session
+$csrfToken = $csrfResponse.data.csrfToken
+```
+
+Then call a protected POST route with the same session and header:
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://localhost:4000/api/v1/users/onboard" `
+  -WebSession $session `
+  -Headers @{ "x-csrf-token" = $csrfToken } `
+  -ContentType "application/json" `
+  -Body '{
+    "email": "riya@example.com",
+    "firstName": "Riya",
+    "partnerName": "Arjun",
+    "homeCity": "Jaipur",
+    "preferredBudget": "mid-range",
+    "preferredRadiusKm": 40
+  }'
 ```
 
 ## Test the AI directly from terminal
@@ -228,7 +318,7 @@ This command does the full synced flow:
 
 ```json
 {
-  "userId": "user_cuid_here",
+  "userId": 1,
   "city": "Jaipur",
   "selectedVibes": ["peaceful-green", "romantic"],
   "freeText": "We want calm hidden places with lots of greenery"

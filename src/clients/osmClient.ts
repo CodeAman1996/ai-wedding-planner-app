@@ -33,6 +33,19 @@ type OverpassElement = {
   tags?: Record<string, string>;
 };
 
+type NominatimSearchResult = {
+  place_id: number;
+  lat: string;
+  lon: string;
+  display_name?: string;
+  name?: string;
+  type?: string;
+  category?: string;
+  importance?: number;
+  osm_type?: string;
+  osm_id?: number;
+};
+
 type SearchLocation = {
   latitude: number;
   longitude: number;
@@ -143,10 +156,33 @@ export class OsmClient {
     const selectors = this.getSelectorsForTerm(term);
     const radiusMeters = Math.max(1000, Math.round(radiusKm * 1000));
     const seen = new Map<string, OsmPlace>();
+    let overpassFailed = false;
+    let shouldShortCircuitToFallback = false;
 
     for (const selector of selectors.slice(0, 4)) {
+      if (shouldShortCircuitToFallback) {
+        break;
+      }
+
       const query = this.buildOverpassQuery([selector], null, location, radiusMeters);
-      const elements = await this.fetchElements(query);
+      let elements: OverpassElement[] = [];
+
+      try {
+        elements = await this.fetchElements(query);
+      } catch (error) {
+        overpassFailed = true;
+        shouldShortCircuitToFallback = this.shouldShortCircuit(error);
+        logger.warn(
+          {
+            term,
+            selector,
+            shortCircuitToFallback: shouldShortCircuitToFallback,
+            error: this.summarizeError(error)
+          },
+          "Overpass selector query failed"
+        );
+        continue;
+      }
 
       for (const element of elements) {
         const place = this.mapElementToPlace(element, location.city);
@@ -162,20 +198,59 @@ export class OsmClient {
 
     if (seen.size < pageSize) {
       const nameRegex = this.buildNameRegex(term);
-      if (nameRegex) {
+      if (nameRegex && !shouldShortCircuitToFallback) {
         const nameQuery = this.buildOverpassQuery([], nameRegex, location, radiusMeters, true);
-        const elements = await this.fetchElements(nameQuery);
+        try {
+          const elements = await this.fetchElements(nameQuery);
 
-        for (const element of elements) {
-          const place = this.mapElementToPlace(element, location.city);
-          if (place) {
-            seen.set(place.id, place);
+          for (const element of elements) {
+            const place = this.mapElementToPlace(element, location.city);
+            if (place) {
+              seen.set(place.id, place);
+            }
           }
+        } catch (error) {
+          overpassFailed = true;
+          shouldShortCircuitToFallback = this.shouldShortCircuit(error);
+          logger.warn(
+            {
+              term,
+              shortCircuitToFallback: shouldShortCircuitToFallback,
+              error: this.summarizeError(error)
+            },
+            "Overpass name query failed"
+          );
         }
       }
     }
 
+    if (seen.size === 0 && overpassFailed) {
+      logger.warn({ term, city: location.city }, "Falling back to Nominatim text search because Overpass is unavailable");
+
+      const fallbackPlaces = await this.searchWithNominatim(term, pageSize, location.city);
+      for (const place of fallbackPlaces) {
+        seen.set(place.id, place);
+      }
+    }
+
     return Array.from(seen.values()).slice(0, pageSize);
+  }
+
+  private async searchWithNominatim(term: string, pageSize: number, city: string): Promise<OsmPlace[]> {
+    const response = await this.http.get(`${env.NOMINATIM_BASE_URL}/search`, {
+      params: {
+        q: `${term} in ${city}`,
+        format: "jsonv2",
+        limit: pageSize,
+        addressdetails: 1
+      }
+    });
+
+    const results = (response.data ?? []) as NominatimSearchResult[];
+
+    return results
+      .map((result) => this.mapNominatimResultToPlace(result, city))
+      .filter((place): place is OsmPlace => Boolean(place));
   }
 
   private buildOverpassQuery(
@@ -230,11 +305,31 @@ out center tags;
         return (response.data?.elements ?? []) as OverpassElement[];
       } catch (error) {
         lastError = error;
-        logger.warn({ endpoint, error }, "Overpass request failed, trying next endpoint if available");
+        logger.warn({ endpoint, error: this.summarizeError(error) }, "Overpass request failed, trying next endpoint if available");
       }
     }
 
     throw lastError;
+  }
+
+  private shouldShortCircuit(error: unknown) {
+    if (!axios.isAxiosError(error)) {
+      return false;
+    }
+
+    return [429, 502, 503, 504].includes(error.response?.status ?? 0);
+  }
+
+  private summarizeError(error: unknown) {
+    if (!axios.isAxiosError(error)) {
+      return error;
+    }
+
+    return {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status
+    };
   }
 
   private getSelectorsForTerm(term: string) {
@@ -301,6 +396,41 @@ out center tags;
       },
       importance: this.estimateImportance(tags),
       sourceUri: `https://www.openstreetmap.org/${element.type}/${element.id}`,
+      source: "overpass"
+    };
+  }
+
+  private mapNominatimResultToPlace(result: NominatimSearchResult, fallbackCity: string): OsmPlace | null {
+    const latitude = Number(result.lat);
+    const longitude = Number(result.lon);
+
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+      return null;
+    }
+
+    const types = [result.category, result.type]
+      .filter(Boolean)
+      .map((value) => value!.toLowerCase());
+
+    const name =
+      result.name ??
+      result.display_name?.split(",")[0]?.trim() ??
+      `${types[0] ?? "place"} in ${fallbackCity}`;
+
+    return {
+      id: result.osm_id ? `${result.osm_type ?? "node"}/${result.osm_id}` : `nominatim/${result.place_id}`,
+      name,
+      formattedAddress: result.display_name ?? fallbackCity,
+      types: Array.from(new Set(types)),
+      location: {
+        latitude,
+        longitude
+      },
+      importance: result.importance ?? 0,
+      sourceUri:
+        result.osm_id && result.osm_type
+          ? `https://www.openstreetmap.org/${result.osm_type}/${result.osm_id}`
+          : undefined,
       source: "overpass"
     };
   }

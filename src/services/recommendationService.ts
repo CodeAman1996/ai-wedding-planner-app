@@ -5,7 +5,7 @@ import { env } from "../config/env.js";
 import { KnowledgeBaseService } from "./knowledgeBaseService.js";
 
 type RecommendationInput = {
-  userId: string;
+  userId: number;
   city: string;
   selectedVibes: string[];
   freeText?: string;

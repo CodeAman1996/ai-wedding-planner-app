@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { UserService } from "../services/userService.js";
+import { sendSuccess } from "../utils/apiResponse.js";
 
 const userService = new UserService();
 
@@ -18,8 +19,11 @@ export async function onboardUser(request: Request, response: Response) {
   const payload = onboardSchema.parse(request.body);
   const user = await userService.onboard(payload);
 
-  return response.status(201).json({
+  return sendSuccess(response, {
+    statusCode: 201,
     message: "User onboarded successfully",
-    user
+    data: {
+      user
+    }
   });
 }
