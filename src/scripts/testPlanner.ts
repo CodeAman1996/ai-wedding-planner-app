@@ -77,6 +77,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     if (token === "--radius") {
       parsed.radius = Number(next);
       index += 1;
+      continue;
     }
   }
 

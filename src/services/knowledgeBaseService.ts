@@ -3,7 +3,7 @@ import { prisma } from "../clients/prisma.js";
 import { chunkText } from "../utils/chunkText.js";
 
 type CoupleProfileMemoryInput = {
-  userId: string;
+  userId: number;
   firstName: string;
   lastName?: string;
   partnerName: string;
@@ -13,7 +13,7 @@ type CoupleProfileMemoryInput = {
 };
 
 type RecommendationMemoryInput = {
-  userId: string;
+  userId: number;
   city: string;
   selectedVibes: string[];
   derivedTags: string[];
@@ -35,7 +35,7 @@ type RecommendationMemoryInput = {
 };
 
 export class KnowledgeBaseService {
-  async listDocuments(userId: string, limit = 20) {
+  async listDocuments(userId: number, limit = 20) {
     return prisma.knowledgeDocument.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -138,7 +138,7 @@ export class KnowledgeBaseService {
     return document;
   }
 
-  async retrieveRelevantContext(userId: string, terms: string[], limit = 6) {
+  async retrieveRelevantContext(userId: number, terms: string[], limit = 6) {
     const normalizedTerms = Array.from(
       new Set(
         terms
@@ -180,7 +180,7 @@ export class KnowledgeBaseService {
     }));
   }
 
-  private async replaceChunks(documentId: string, content: string, keywords: string[]) {
+  private async replaceChunks(documentId: number, content: string, keywords: string[]) {
     const chunks = chunkText(content);
 
     await prisma.$transaction([
