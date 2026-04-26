@@ -6,8 +6,4 @@ export class VibeCatalogService {
   list() {
     return this.vibeRepository.listActive();
   }
-
-  seed() {
-    return this.vibeRepository.seedDefaults();
-  }
 }
