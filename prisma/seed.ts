@@ -1,23 +1,10 @@
 import { PrismaClient } from "@prisma/client";
-import { DEFAULT_VIBE_OPTIONS } from "../src/constants/defaultVibes.js";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  for (const vibe of DEFAULT_VIBE_OPTIONS) {
-    await prisma.vibeOption.upsert({
-      where: { key: vibe.key },
-      update: {
-        name: vibe.name
-      },
-      create: {
-        key: vibe.key,
-        name: vibe.name
-      }
-    });
-  }
-
-  console.log(`Seeded ${DEFAULT_VIBE_OPTIONS.length} vibe options.`);
+  const count = await prisma.vibeOption.count();
+  console.log(`No file-based vibe seed is configured. Existing vibe options in database: ${count}.`);
 }
 
 main()

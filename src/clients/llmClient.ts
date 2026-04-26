@@ -1,6 +1,11 @@
 import axios from "axios";
 import { env } from "../config/env.js";
 
+export type SelectedVibeOption = {
+  key: string;
+  name: string;
+};
+
 export type VibeAnalysis = {
   normalizedVibes: string[];
   placeSearchTerms: string[];
@@ -11,7 +16,7 @@ export type VibeAnalysis = {
 export interface LlmClient {
   analyzeVibes(input: {
     city: string;
-    selectedVibes: string[];
+    selectedVibes: SelectedVibeOption[];
     freeText?: string;
     memorySnippets?: string[];
   }): Promise<VibeAnalysis>;
@@ -20,7 +25,7 @@ export interface LlmClient {
 class GeminiLlmClient implements LlmClient {
   async analyzeVibes(input: {
     city: string;
-    selectedVibes: string[];
+    selectedVibes: SelectedVibeOption[];
     freeText?: string;
     memorySnippets?: string[];
   }): Promise<VibeAnalysis> {
@@ -28,11 +33,17 @@ class GeminiLlmClient implements LlmClient {
       throw new Error("GEMINI_API_KEY is missing");
     }
 
+    const selectedVibesBlock = input.selectedVibes.map((vibe) => `- ${vibe.key}: ${vibe.name}`).join("\n");
+
     const prompt = `
 You are a wedding planning backend classifier.
 Return strict JSON with keys normalizedVibes, placeSearchTerms, moodSummary, expansionStrategy.
 The city is "${input.city}".
-Selected vibes: ${input.selectedVibes.join(", ")}.
+The couple can only choose from preset vibe options.
+Selected preset vibes:
+${selectedVibesBlock || "- none"}.
+Use only the selected preset vibes as the source of vibe interpretation.
+Do not treat free text as new vibe labels or new vibe keywords.
 Free text: ${input.freeText ?? "none"}.
 Relevant memory snippets:
 ${input.memorySnippets?.length ? input.memorySnippets.join("\n") : "none"}.
@@ -66,15 +77,20 @@ Choose location types suitable for pre-wedding shoots and keep placeSearchTerms 
 class OllamaLlmClient implements LlmClient {
   async analyzeVibes(input: {
     city: string;
-    selectedVibes: string[];
+    selectedVibes: SelectedVibeOption[];
     freeText?: string;
     memorySnippets?: string[];
   }): Promise<VibeAnalysis> {
+    const selectedVibesBlock = input.selectedVibes.map((vibe) => `${vibe.key}: ${vibe.name}`).join(" | ");
+
     const prompt = `
 You are a wedding planning backend classifier.
 Return minified JSON with keys normalizedVibes, placeSearchTerms, moodSummary, expansionStrategy.
 City: ${input.city}
-Selected vibes: ${input.selectedVibes.join(", ")}
+The couple can only choose from preset vibe options.
+Selected preset vibes: ${selectedVibesBlock || "none"}
+Use only the selected preset vibes as the source of vibe interpretation.
+Do not treat free text as new vibe labels or new vibe keywords.
 Free text: ${input.freeText ?? "none"}
 Relevant memory snippets: ${input.memorySnippets?.join(" | ") ?? "none"}
 `;
@@ -93,38 +109,49 @@ Relevant memory snippets: ${input.memorySnippets?.join(" | ") ?? "none"}
 class MockLlmClient implements LlmClient {
   async analyzeVibes(input: {
     city: string;
-    selectedVibes: string[];
+    selectedVibes: SelectedVibeOption[];
     freeText?: string;
     memorySnippets?: string[];
   }): Promise<VibeAnalysis> {
-    const normalized = input.selectedVibes.flatMap((item) =>
-      item
-        .toLowerCase()
-        .split(/[,&/]/g)
-        .map((part) => part.trim())
-        .filter(Boolean)
-    );
-
-    const seeds = new Set(normalized);
+    const selectedKeys = new Set(input.selectedVibes.map((item) => item.key.toLowerCase()));
+    const seeds = new Set<string>();
     const searchTerms = new Set<string>();
 
-    if (normalized.some((value) => ["peace", "peaceful", "green", "nature", "quiet"].includes(value))) {
+    if (selectedKeys.has("peaceful-green")) {
+      ["peaceful", "green", "nature", "quiet"].forEach((value) => seeds.add(value));
       searchTerms.add("botanical garden");
       searchTerms.add("ecotourism park");
       searchTerms.add("forest park");
     }
 
-    if (normalized.some((value) => ["royal", "heritage", "grand"].includes(value))) {
+    if (selectedKeys.has("royal-heritage")) {
+      ["royal", "heritage", "grand"].forEach((value) => seeds.add(value));
       searchTerms.add("heritage fort");
       searchTerms.add("palace");
     }
 
-    if (normalized.some((value) => ["sunset", "dreamy", "romantic"].includes(value))) {
+    if (selectedKeys.has("dreamy-sunset")) {
+      ["dreamy", "sunset", "romantic"].forEach((value) => seeds.add(value));
       searchTerms.add("hill viewpoint");
       searchTerms.add("lakefront");
     }
 
+    if (selectedKeys.has("urban-chic")) {
+      ["urban", "chic", "modern"].forEach((value) => seeds.add(value));
+      searchTerms.add("city garden");
+      searchTerms.add("heritage street");
+      searchTerms.add("rooftop cafe");
+    }
+
+    if (selectedKeys.has("cozy-intimate")) {
+      ["cozy", "intimate", "romantic"].forEach((value) => seeds.add(value));
+      searchTerms.add("courtyard cafe");
+      searchTerms.add("boutique garden");
+      searchTerms.add("lakeside cafe");
+    }
+
     if (searchTerms.size === 0) {
+      seeds.add("romantic");
       searchTerms.add("photography location");
       searchTerms.add("botanical garden");
     }
@@ -132,7 +159,7 @@ class MockLlmClient implements LlmClient {
     return {
       normalizedVibes: Array.from(seeds),
       placeSearchTerms: Array.from(searchTerms),
-      moodSummary: `The couple is leaning toward ${Array.from(seeds).join(", ")} aesthetics in ${input.city}.${input.memorySnippets?.length ? ` Memory hints: ${input.memorySnippets.join(" | ")}` : ""}`,
+      moodSummary: `The couple selected ${input.selectedVibes.map((item) => item.name).join(", ")} for ${input.city}.${input.memorySnippets?.length ? ` Memory hints: ${input.memorySnippets.join(" | ")}` : ""}`,
       expansionStrategy: "If the city has weak matches, search nearby districts and then suggest the closest stronger city options."
     };
   }

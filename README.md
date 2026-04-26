@@ -70,9 +70,7 @@ This gives you memory and reuse of prior context without introducing embeddings 
 ## API endpoints
 
 - `GET /health`
-- `GET /api/v1/security/csrf-token`
 - `GET /api/v1/vibes`
-- `POST /api/v1/vibes/seed`
 - `POST /api/v1/users/onboard`
 - `GET /api/v1/users/:userId/knowledge`
 - `POST /api/v1/recommendations/locations`
@@ -90,7 +88,6 @@ PORT=4000
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/ai_wedding_planner?schema=public
 REDIS_URL=redis://localhost:6379
 ENABLE_REDIS=false
-ENABLE_CSRF=true
 
 GEMINI_API_KEY=your_gemini_api_key
 OLLAMA_BASE_URL=http://127.0.0.1:11434
@@ -103,8 +100,6 @@ CORS_ALLOW_CREDENTIALS=true
 NOMINATIM_BASE_URL=https://nominatim.openstreetmap.org
 OVERPASS_API_URL=https://overpass-api.de/api/interpreter
 OSM_USER_AGENT=ai-wedding-planner/0.1 (contact: your-email@example.com)
-CSRF_COOKIE_NAME=csrf_secret
-CSRF_HEADER_NAME=x-csrf-token
 
 CACHE_TTL_SECONDS=3600
 BASE_SEARCH_RADIUS_KM=25
@@ -220,49 +215,58 @@ Every API now returns a consistent response envelope:
 
 Validation and server errors also include `success: false` and `statusCode`.
 
-## CORS and CSRF
+## Firebase Auth in the backend
 
-This project now has explicit CORS config and CSRF protection.
+This backend can verify Firebase ID tokens using Firebase Admin SDK.
+
+Current behavior:
+
+- set `ENABLE_FIREBASE_AUTH=true` to protect selected endpoints with Firebase token verification
+- send `Authorization: Bearer <firebase_id_token>` from the client
+- backend verifies the token using Firebase Admin SDK
+
+### Where to store the Firebase service account secret
+
+Do not store the service-account JSON inside the project folder or commit it to GitHub.
+
+Best local-dev option:
+
+- save the service-account JSON somewhere outside the repo, for example:
+  - `C:\Users\Aman\Secrets\firebase-service-account.json`
+
+Then in your local `.env` set:
+
+```env
+ENABLE_FIREBASE_AUTH=true
+GOOGLE_APPLICATION_CREDENTIALS=C:\Users\Aman\Secrets\firebase-service-account.json
+```
+
+That is the safest simple setup for local development.
+
+Alternative option:
+
+- instead of a file path, you can set:
+  - `FIREBASE_PROJECT_ID`
+  - `FIREBASE_CLIENT_EMAIL`
+  - `FIREBASE_PRIVATE_KEY`
+
+But the file-path approach is usually easier and cleaner locally.
+
+### Important
+
+- the Firebase service-account JSON is a backend secret
+- it must stay out of git
+- keep it outside the repo
+- use environment variables or secret managers in production
+
+## CORS
+
+This project now has explicit CORS config.
 
 CORS:
 
 - allowed origins come from `CORS_ALLOWED_ORIGINS`
 - credential support comes from `CORS_ALLOW_CREDENTIALS`
-
-CSRF:
-
-- controlled by `ENABLE_CSRF`
-- token endpoint: `GET /api/v1/security/csrf-token`
-- send the token back in the `x-csrf-token` header for `POST`, `PUT`, `PATCH`, and `DELETE`
-
-### Terminal flow for CSRF-protected POST APIs
-
-Fetch a CSRF token first and keep the cookie session:
-
-```powershell
-$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-$csrfResponse = Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/v1/security/csrf-token" -WebSession $session
-$csrfToken = $csrfResponse.data.csrfToken
-```
-
-Then call a protected POST route with the same session and header:
-
-```powershell
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://localhost:4000/api/v1/users/onboard" `
-  -WebSession $session `
-  -Headers @{ "x-csrf-token" = $csrfToken } `
-  -ContentType "application/json" `
-  -Body '{
-    "email": "riya@example.com",
-    "firstName": "Riya",
-    "partnerName": "Arjun",
-    "homeCity": "Jaipur",
-    "preferredBudget": "mid-range",
-    "preferredRadiusKm": 40
-  }'
-```
 
 ## Test the AI directly from terminal
 

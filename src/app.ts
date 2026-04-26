@@ -22,7 +22,7 @@ export function createApp() {
       },
       credentials: env.CORS_ALLOW_CREDENTIALS,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", env.CSRF_HEADER_NAME]
+      allowedHeaders: ["Content-Type", "Authorization"]
     })
   );
   app.use(express.json());
@@ -32,7 +32,6 @@ export function createApp() {
     })
   );
 
-  app.options("*", cors());
   app.use(router);
   app.use(errorHandler);
 

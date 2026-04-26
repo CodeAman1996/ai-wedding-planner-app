@@ -1,7 +1,9 @@
 import { cache } from "../clients/redis.js";
-import { createLlmClient } from "../clients/llmClient.js";
+import { createLlmClient, type SelectedVibeOption } from "../clients/llmClient.js";
 import { OsmClient, type GeocodeResult, type OsmPlace } from "../clients/osmClient.js";
 import { env } from "../config/env.js";
+import { VibeRepository } from "../repositories/vibeRepository.js";
+import { HttpError } from "../utils/httpError.js";
 import { KnowledgeBaseService } from "./knowledgeBaseService.js";
 
 type RecommendationInput = {
@@ -22,17 +24,21 @@ export class RecommendationService {
   private readonly llmClient = createLlmClient();
   private readonly mapsClient = new OsmClient();
   private readonly knowledgeBaseService = new KnowledgeBaseService();
+  private readonly vibeRepository = new VibeRepository();
 
   async generate(input: RecommendationInput) {
+    const selectedVibeOptions = await this.resolveSelectedVibeOptions(input.selectedVibes);
+    const selectedVibeNames = selectedVibeOptions.map((item) => item.name);
+
     const memory = await this.knowledgeBaseService.retrieveRelevantContext(input.userId, [
       input.city,
-      ...input.selectedVibes,
+      ...selectedVibeNames,
       input.freeText ?? ""
     ]);
 
     const analysis = await this.llmClient.analyzeVibes({
       city: input.city,
-      selectedVibes: input.selectedVibes,
+      selectedVibes: selectedVibeOptions,
       freeText: input.freeText,
       memorySnippets: memory.map((item) => item.content)
     });
@@ -62,7 +68,7 @@ export class RecommendationService {
     const knowledgeDocument = await this.knowledgeBaseService.rememberRecommendation({
       userId: input.userId,
       city: input.city,
-      selectedVibes: input.selectedVibes,
+      selectedVibes: selectedVibeNames,
       derivedTags: analysis.normalizedVibes,
       llmSummary: analysis.moodSummary,
       expansionStrategy: analysis.expansionStrategy,
@@ -73,6 +79,7 @@ export class RecommendationService {
       knowledgeDocumentId: knowledgeDocument.id,
       city: input.city,
       coordinates: geocode,
+      selectedVibes: selectedVibeOptions,
       normalizedVibes: analysis.normalizedVibes,
       searchTerms: analysis.placeSearchTerms,
       llmSummary: analysis.moodSummary,
@@ -80,6 +87,30 @@ export class RecommendationService {
       usedMemory: memory,
       suggestions
     };
+  }
+
+  private async resolveSelectedVibeOptions(selectedVibes: string[]): Promise<SelectedVibeOption[]> {
+    const requestedKeys = Array.from(new Set(selectedVibes.map((item) => item.trim().toLowerCase()).filter(Boolean)));
+    const vibeOptions = await this.vibeRepository.findByKeys(requestedKeys);
+
+    if (vibeOptions.length === 0) {
+      throw new HttpError(400, "Select at least one valid vibe option.");
+    }
+
+    const vibeByKey = new Map(vibeOptions.map((item) => [item.key.toLowerCase(), item] as const));
+    const resolved = requestedKeys
+      .map((key) => vibeByKey.get(key))
+      .filter((item): item is (typeof vibeOptions)[number] => Boolean(item))
+      .map((item) => ({
+        key: item.key,
+        name: item.name
+      }));
+
+    if (resolved.length === 0) {
+      throw new HttpError(400, "Select at least one valid vibe option.");
+    }
+
+    return resolved;
   }
 
   private async findPlaces(geocode: GeocodeResult, searchTerms: string[], allowNearbySearch: boolean) {

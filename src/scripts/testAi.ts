@@ -1,4 +1,5 @@
 import { createLlmClient } from "../clients/llmClient.js";
+import { VibeRepository } from "../repositories/vibeRepository.js";
 
 type ParsedArgs = {
   city: string;
@@ -54,10 +55,15 @@ function parseArgs(argv: string[]): ParsedArgs {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const llmClient = createLlmClient();
+  const vibeRepository = new VibeRepository();
+  const selectedVibes = await vibeRepository.findByKeys(args.vibes);
 
   const response = await llmClient.analyzeVibes({
     city: args.city,
-    selectedVibes: args.vibes,
+    selectedVibes: selectedVibes.map((item) => ({
+      key: item.key,
+      name: item.name
+    })),
     freeText: args.text,
     memorySnippets: args.memory
   });

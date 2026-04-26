@@ -14,14 +14,3 @@ export async function listVibes(_request: Request, response: Response) {
     }
   });
 }
-
-export async function seedVibes(_request: Request, response: Response) {
-  const items = await vibeCatalogService.seed();
-  return sendSuccess(response, {
-    statusCode: 201,
-    message: "Default vibes synced to database",
-    data: {
-      count: items.length
-    }
-  });
-}
