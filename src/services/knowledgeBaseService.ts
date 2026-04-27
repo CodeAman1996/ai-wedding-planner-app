@@ -34,6 +34,22 @@ type RecommendationMemoryInput = {
   }>;
 };
 
+type WeddingThemeMemoryInput = {
+  userId: number;
+  city: string;
+  selectedVibes: string[];
+  themeName: string;
+  themeStory: string;
+  colorPalette: string[];
+  decorIdeas: string[];
+  venueStyles: string[];
+  lightingStyle: string;
+  guestExperience: string;
+  foodStyle: string;
+  stationeryStyle: string;
+  mustAvoid: string[];
+};
+
 export class KnowledgeBaseService {
   async listDocuments(userId: number, limit = 20) {
     return prisma.knowledgeDocument.findMany({
@@ -130,6 +146,62 @@ export class KnowledgeBaseService {
           suggestions: input.suggestions
         },
         source: "system:recommendation"
+      }
+    });
+
+    await this.replaceChunks(document.id, content, keywords);
+
+    return document;
+  }
+
+  async rememberWeddingTheme(input: WeddingThemeMemoryInput) {
+    const title = `Wedding theme for ${input.city}: ${input.themeName}`;
+    const content = [
+      `Wedding theme for ${input.city}.`,
+      `Selected vibes: ${input.selectedVibes.join(", ")}.`,
+      `Theme name: ${input.themeName}.`,
+      `Theme story: ${input.themeStory}.`,
+      `Color palette: ${input.colorPalette.join(", ")}.`,
+      `Decor direction: ${input.decorIdeas.join(", ")}.`,
+      `Venue styles: ${input.venueStyles.join(", ")}.`,
+      `Lighting style: ${input.lightingStyle}.`,
+      `Guest experience: ${input.guestExperience}.`,
+      `Food style: ${input.foodStyle}.`,
+      `Stationery style: ${input.stationeryStyle}.`,
+      `Avoid: ${input.mustAvoid.join(", ")}.`
+    ].join(" ");
+
+    const keywords = Array.from(
+      new Set(
+        [
+          input.city,
+          ...input.selectedVibes,
+          input.themeName,
+          ...input.colorPalette,
+          ...input.venueStyles,
+          ...input.mustAvoid
+        ].map((value) => value.toLowerCase())
+      )
+    );
+
+    const document = await prisma.knowledgeDocument.create({
+      data: {
+        userId: input.userId,
+        kind: KnowledgeKind.THEME,
+        referenceKey: `theme:${input.userId}:${Date.now()}`,
+        title,
+        content,
+        keywords,
+        metadata: {
+          city: input.city,
+          selectedVibes: input.selectedVibes,
+          themeName: input.themeName,
+          colorPalette: input.colorPalette,
+          decorIdeas: input.decorIdeas,
+          venueStyles: input.venueStyles,
+          mustAvoid: input.mustAvoid
+        },
+        source: "system:theme-generator"
       }
     });
 

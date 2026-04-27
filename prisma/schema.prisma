@@ -16,6 +16,7 @@ model User {
   updatedAt          DateTime            @updatedAt
   profile            CoupleProfile?
   knowledgeDocuments KnowledgeDocument[]
+  weddingThemes      WeddingTheme[]
 }
 
 model CoupleProfile {
@@ -66,10 +67,41 @@ model KnowledgeChunk {
   @@unique([documentId, chunkIndex])
 }
 
+model WeddingTheme {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  city              String
+  season            String?
+  weddingMonth      String?
+  guestCount        Int?
+  budget            String?
+  personality       String?
+  selectedVibeKeys  Json
+  selectedVibeNames Json
+  themeName         String
+  themeStory        String
+  colorPalette      Json
+  decorIdeas        Json
+  outfitIdeas       Json
+  venueStyles       Json
+  lightingStyle     String
+  photoMood         Json
+  guestExperience   String
+  foodStyle         String
+  stationeryStyle   String
+  mustAvoid         Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
 enum KnowledgeKind {
   PROFILE
   PREFERENCE
   RECOMMENDATION
+  THEME
   PLACE
   NOTE
 }
