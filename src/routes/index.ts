@@ -3,6 +3,7 @@ import { listKnowledgeDocuments } from "../controllers/knowledgeController.js";
 import { generateLocationRecommendations } from "../controllers/recommendationController.js";
 import { onboardUser } from "../controllers/userController.js";
 import { listVibes } from "../controllers/vibeController.js";
+import { generateWeddingTheme } from "../controllers/weddingThemeController.js";
 import { requireFirebaseAuth } from "../middlewares/firebaseAuth.js";
 import { sendSuccess } from "../utils/apiResponse.js";
 
@@ -20,5 +21,6 @@ router.get("/api/v1/vibes", listVibes);
 router.post("/api/v1/users/onboard", requireFirebaseAuth, onboardUser);
 router.get("/api/v1/users/:userId/knowledge", requireFirebaseAuth, listKnowledgeDocuments);
 router.post("/api/v1/recommendations/locations", requireFirebaseAuth, generateLocationRecommendations);
+router.post("/api/v1/themes/generate", requireFirebaseAuth, generateWeddingTheme);
 
 export { router };
